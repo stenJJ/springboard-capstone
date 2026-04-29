@@ -153,6 +153,10 @@ The app should prevent duplicate entries for the same user by checking this comb
 user_id + api_id + media_type
 ```
 
+This means one user cannot accidentally save the same movie/show twice.
+
+---
+
 ## 8. Possible API Issues
 
 Possible API issues include:
