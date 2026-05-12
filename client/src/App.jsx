@@ -1,18 +1,30 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import "./App.css";
 
-const API_BASE = "http://localhost:5000/api";
+import {
+  checkDuplicateClip,
+  createClip,
+  deleteClip,
+  getClips,
+  updateClip
+} from "./api";
+
+import AlertMessage from "./components/AlertMessage";
+import ClipCard from "./components/ClipCard";
+import ClipFilters from "./components/ClipFilters";
+import ClipForm from "./components/ClipForm";
+
+const emptyForm = {
+  url: "",
+  title: "",
+  status: "saved",
+  tags: "",
+  notes: ""
+};
 
 function App() {
   const [clips, setClips] = useState([]);
-  const [formData, setFormData] = useState({
-    url: "",
-    title: "",
-    status: "saved",
-    tags: "",
-    notes: ""
-  });
+  const [formData, setFormData] = useState(emptyForm);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [error, setError] = useState("");
@@ -20,13 +32,16 @@ function App() {
   const [editingId, setEditingId] = useState(null);
 
   async function loadClips() {
-    const params = new URLSearchParams();
+    try {
+      const clipsFromApi = await getClips({
+        search,
+        status: statusFilter
+      });
 
-    if (search) params.append("search", search);
-    if (statusFilter !== "all") params.append("status", statusFilter);
-
-    const response = await axios.get(`${API_BASE}/clips?${params.toString()}`);
-    setClips(response.data.clips);
+      setClips(clipsFromApi);
+    } catch {
+      setError("Could not load clips.");
+    }
   }
 
   useEffect(() => {
@@ -49,31 +64,22 @@ function App() {
 
     try {
       if (editingId) {
-        await axios.patch(`${API_BASE}/clips/${editingId}`, formData);
+        await updateClip(editingId, formData);
         setMessage("Clip updated.");
         setEditingId(null);
       } else {
-        const duplicateCheck = await axios.post(`${API_BASE}/clips/check-duplicate`, {
-          url: formData.url
-        });
+        const duplicateCheck = await checkDuplicateClip(formData.url);
 
-        if (duplicateCheck.data.duplicate) {
+        if (duplicateCheck.duplicate) {
           setError("Duplicate warning: this URL is already saved.");
           return;
         }
 
-        await axios.post(`${API_BASE}/clips`, formData);
+        await createClip(formData);
         setMessage("Clip saved.");
       }
 
-      setFormData({
-        url: "",
-        title: "",
-        status: "saved",
-        tags: "",
-        notes: ""
-      });
-
+      setFormData(emptyForm);
       loadClips();
     } catch (err) {
       setError(err.response?.data?.error || "Something went wrong.");
@@ -82,6 +88,7 @@ function App() {
 
   function startEdit(clip) {
     setEditingId(clip.id);
+
     setFormData({
       url: clip.url,
       title: clip.title,
@@ -89,26 +96,21 @@ function App() {
       tags: clip.tags,
       notes: clip.notes
     });
+
     setError("");
     setMessage("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function deleteClip(id) {
-    await axios.delete(`${API_BASE}/clips/${id}`);
+  async function handleDeleteClip(id) {
+    await deleteClip(id);
     setMessage("Clip deleted.");
     loadClips();
   }
 
   function cancelEdit() {
     setEditingId(null);
-    setFormData({
-      url: "",
-      title: "",
-      status: "saved",
-      tags: "",
-      notes: ""
-    });
+    setFormData(emptyForm);
   }
 
   return (
@@ -125,128 +127,37 @@ function App() {
         <section className="panel">
           <h2>{editingId ? "Edit Clip" : "Add Clip"}</h2>
 
-          {error && <div className="error">{error}</div>}
-          {message && <div className="message">{message}</div>}
+          <AlertMessage error={error} message={message} />
 
-          <form onSubmit={handleSubmit} className="clip-form">
-            <label>
-              Video URL
-              <input
-                name="url"
-                value={formData.url}
-                onChange={handleChange}
-                placeholder="https://www.youtube.com/watch?v=..."
-                required
-              />
-            </label>
-
-            <label>
-              Title
-              <input
-                name="title"
-                value={formData.title}
-                onChange={handleChange}
-                placeholder="Clip title"
-              />
-            </label>
-
-            <label>
-              Status
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleChange}
-              >
-                <option value="saved">Saved</option>
-                <option value="watch_later">Watch Later</option>
-                <option value="watched">Watched</option>
-                <option value="archived">Archived</option>
-              </select>
-            </label>
-
-            <label>
-              Tags
-              <input
-                name="tags"
-                value={formData.tags}
-                onChange={handleChange}
-                placeholder="coding, anime, music"
-              />
-            </label>
-
-            <label>
-              Notes
-              <textarea
-                name="notes"
-                value={formData.notes}
-                onChange={handleChange}
-                placeholder="Why did you save this?"
-              />
-            </label>
-
-            <button type="submit">
-              {editingId ? "Save Changes" : "Save Clip"}
-            </button>
-
-            {editingId && (
-              <button type="button" className="secondary" onClick={cancelEdit}>
-                Cancel Edit
-              </button>
-            )}
-          </form>
+          <ClipForm
+            formData={formData}
+            editingId={editingId}
+            onChange={handleChange}
+            onSubmit={handleSubmit}
+            onCancelEdit={cancelEdit}
+          />
         </section>
 
         <section className="panel">
           <h2>Clip Library</h2>
 
-          <div className="filters">
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search clips..."
-            />
-
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-            >
-              <option value="all">All Statuses</option>
-              <option value="saved">Saved</option>
-              <option value="watch_later">Watch Later</option>
-              <option value="watched">Watched</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
+          <ClipFilters
+            search={search}
+            statusFilter={statusFilter}
+            onSearchChange={setSearch}
+            onStatusChange={setStatusFilter}
+          />
 
           <p className="count">{clips.length} clip(s) found</p>
 
           <div className="clip-list">
             {clips.map((clip) => (
-              <article key={clip.id} className="clip-card">
-                <h3>{clip.title}</h3>
-                <a href={clip.url} target="_blank" rel="noreferrer">
-                  Open URL
-                </a>
-                <p>
-                  <strong>Status:</strong> {clip.status}
-                </p>
-                <p>
-                  <strong>Tags:</strong> {clip.tags || "None"}
-                </p>
-                <p>
-                  <strong>Notes:</strong> {clip.notes || "None"}
-                </p>
-                <p className="small">
-                  <strong>Normalized URL:</strong> {clip.normalizedUrl}
-                </p>
-
-                <div className="card-actions">
-                  <button onClick={() => startEdit(clip)}>Edit</button>
-                  <button className="danger" onClick={() => deleteClip(clip.id)}>
-                    Delete
-                  </button>
-                </div>
-              </article>
+              <ClipCard
+                key={clip.id}
+                clip={clip}
+                onEdit={startEdit}
+                onDelete={handleDeleteClip}
+              />
             ))}
 
             {clips.length === 0 && (
