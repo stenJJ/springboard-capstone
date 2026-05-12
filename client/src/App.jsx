@@ -1,17 +1,45 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import "./App.css";
 
-const API_BASE = "http://localhost:5000/api";
+import {
+  checkDuplicateClip,
+  createClip,
+  deleteClip,
+  getClips,
+  loginUser,
+  registerUser,
+  updateClip
+} from "./api";
+
+import AlertMessage from "./components/AlertMessage";
+import AuthForm from "./components/AuthForm";
+import ClipCard from "./components/ClipCard";
+import ClipFilters from "./components/ClipFilters";
+import ClipForm from "./components/ClipForm";
+
+const emptyClipForm = {
+  url: "",
+  title: "",
+  status: "saved",
+  tags: "",
+  notes: ""
+};
+
+const emptyAuthForm = {
+  username: "",
+  email: "",
+  usernameOrEmail: "",
+  password: ""
+};
 
 function App() {
   const [clips, setClips] = useState([]);
-  const [formData, setFormData] = useState({
-    url: "",
-    title: "",
-    status: "saved",
-    tags: "",
-    notes: ""
+  const [clipFormData, setClipFormData] = useState(emptyClipForm);
+  const [authFormData, setAuthFormData] = useState(emptyAuthForm);
+  const [authMode, setAuthMode] = useState("login");
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem("user");
+    return savedUser ? JSON.parse(savedUser) : null;
   });
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -20,60 +48,103 @@ function App() {
   const [editingId, setEditingId] = useState(null);
 
   async function loadClips() {
-    const params = new URLSearchParams();
+    if (!user) return;
 
-    if (search) params.append("search", search);
-    if (statusFilter !== "all") params.append("status", statusFilter);
+    try {
+      const clipsFromApi = await getClips({
+        search,
+        status: statusFilter
+      });
 
-    const response = await axios.get(`${API_BASE}/clips?${params.toString()}`);
-    setClips(response.data.clips);
+      setClips(clipsFromApi);
+    } catch {
+      setError("Could not load clips.");
+    }
   }
 
   useEffect(() => {
     loadClips();
-  }, [search, statusFilter]);
+  }, [search, statusFilter, user]);
 
-  function handleChange(event) {
+  function handleClipChange(event) {
     const { name, value } = event.target;
 
-    setFormData((data) => ({
+    setClipFormData((data) => ({
       ...data,
       [name]: value
     }));
   }
 
-  async function handleSubmit(event) {
+  function handleAuthChange(event) {
+    const { name, value } = event.target;
+
+    setAuthFormData((data) => ({
+      ...data,
+      [name]: value
+    }));
+  }
+
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+
+    try {
+      const result =
+        authMode === "register"
+          ? await registerUser({
+              username: authFormData.username,
+              email: authFormData.email,
+              password: authFormData.password
+            })
+          : await loginUser({
+              usernameOrEmail: authFormData.usernameOrEmail,
+              password: authFormData.password
+            });
+
+      localStorage.setItem("token", result.token);
+      localStorage.setItem("user", JSON.stringify(result.user));
+
+      setUser(result.user);
+      setAuthFormData(emptyAuthForm);
+      setMessage(`Logged in as ${result.user.username}.`);
+    } catch (err) {
+      setError(err.response?.data?.error || "Authentication failed.");
+    }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setUser(null);
+    setClips([]);
+    setMessage("");
+    setError("");
+  }
+
+  async function handleClipSubmit(event) {
     event.preventDefault();
     setError("");
     setMessage("");
 
     try {
       if (editingId) {
-        await axios.patch(`${API_BASE}/clips/${editingId}`, formData);
+        await updateClip(editingId, clipFormData);
         setMessage("Clip updated.");
         setEditingId(null);
       } else {
-        const duplicateCheck = await axios.post(`${API_BASE}/clips/check-duplicate`, {
-          url: formData.url
-        });
+        const duplicateCheck = await checkDuplicateClip(clipFormData.url);
 
-        if (duplicateCheck.data.duplicate) {
+        if (duplicateCheck.duplicate) {
           setError("Duplicate warning: this URL is already saved.");
           return;
         }
 
-        await axios.post(`${API_BASE}/clips`, formData);
+        await createClip(clipFormData);
         setMessage("Clip saved.");
       }
 
-      setFormData({
-        url: "",
-        title: "",
-        status: "saved",
-        tags: "",
-        notes: ""
-      });
-
+      setClipFormData(emptyClipForm);
       loadClips();
     } catch (err) {
       setError(err.response?.data?.error || "Something went wrong.");
@@ -82,33 +153,35 @@ function App() {
 
   function startEdit(clip) {
     setEditingId(clip.id);
-    setFormData({
+
+    setClipFormData({
       url: clip.url,
       title: clip.title,
       status: clip.status,
       tags: clip.tags,
       notes: clip.notes
     });
+
     setError("");
     setMessage("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function deleteClip(id) {
-    await axios.delete(`${API_BASE}/clips/${id}`);
+  async function handleDeleteClip(id) {
+    await deleteClip(id);
     setMessage("Clip deleted.");
     loadClips();
   }
 
   function cancelEdit() {
     setEditingId(null);
-    setFormData({
-      url: "",
-      title: "",
-      status: "saved",
-      tags: "",
-      notes: ""
-    });
+    setClipFormData(emptyClipForm);
+  }
+
+  function toggleAuthMode() {
+    setAuthMode((mode) => (mode === "login" ? "register" : "login"));
+    setError("");
+    setMessage("");
   }
 
   return (
@@ -119,141 +192,77 @@ function App() {
           Save video links, organize clips, and prevent duplicate URLs from
           cluttering your media library.
         </p>
+
+        {user && (
+          <div className="user-bar">
+            <span>Logged in as {user.username}</span>
+            <button type="button" className="secondary" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
+        )}
       </header>
 
-      <main className="layout">
-        <section className="panel">
-          <h2>{editingId ? "Edit Clip" : "Add Clip"}</h2>
+      <main className={user ? "layout" : "auth-layout"}>
+        {!user && (
+          <>
+            <AlertMessage error={error} message={message} />
 
-          {error && <div className="error">{error}</div>}
-          {message && <div className="message">{message}</div>}
-
-          <form onSubmit={handleSubmit} className="clip-form">
-            <label>
-              Video URL
-              <input
-                name="url"
-                value={formData.url}
-                onChange={handleChange}
-                placeholder="https://www.youtube.com/watch?v=..."
-                required
-              />
-            </label>
-
-            <label>
-              Title
-              <input
-                name="title"
-                value={formData.title}
-                onChange={handleChange}
-                placeholder="Clip title"
-              />
-            </label>
-
-            <label>
-              Status
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleChange}
-              >
-                <option value="saved">Saved</option>
-                <option value="watch_later">Watch Later</option>
-                <option value="watched">Watched</option>
-                <option value="archived">Archived</option>
-              </select>
-            </label>
-
-            <label>
-              Tags
-              <input
-                name="tags"
-                value={formData.tags}
-                onChange={handleChange}
-                placeholder="coding, anime, music"
-              />
-            </label>
-
-            <label>
-              Notes
-              <textarea
-                name="notes"
-                value={formData.notes}
-                onChange={handleChange}
-                placeholder="Why did you save this?"
-              />
-            </label>
-
-            <button type="submit">
-              {editingId ? "Save Changes" : "Save Clip"}
-            </button>
-
-            {editingId && (
-              <button type="button" className="secondary" onClick={cancelEdit}>
-                Cancel Edit
-              </button>
-            )}
-          </form>
-        </section>
-
-        <section className="panel">
-          <h2>Clip Library</h2>
-
-          <div className="filters">
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search clips..."
+            <AuthForm
+              mode={authMode}
+              formData={authFormData}
+              onChange={handleAuthChange}
+              onSubmit={handleAuthSubmit}
+              onToggleMode={toggleAuthMode}
             />
+          </>
+        )}
 
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-            >
-              <option value="all">All Statuses</option>
-              <option value="saved">Saved</option>
-              <option value="watch_later">Watch Later</option>
-              <option value="watched">Watched</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
+        {user && (
+          <>
+            <section className="panel">
+              <h2>{editingId ? "Edit Clip" : "Add Clip"}</h2>
 
-          <p className="count">{clips.length} clip(s) found</p>
+              <AlertMessage error={error} message={message} />
 
-          <div className="clip-list">
-            {clips.map((clip) => (
-              <article key={clip.id} className="clip-card">
-                <h3>{clip.title}</h3>
-                <a href={clip.url} target="_blank" rel="noreferrer">
-                  Open URL
-                </a>
-                <p>
-                  <strong>Status:</strong> {clip.status}
-                </p>
-                <p>
-                  <strong>Tags:</strong> {clip.tags || "None"}
-                </p>
-                <p>
-                  <strong>Notes:</strong> {clip.notes || "None"}
-                </p>
-                <p className="small">
-                  <strong>Normalized URL:</strong> {clip.normalizedUrl}
-                </p>
+              <ClipForm
+                formData={clipFormData}
+                editingId={editingId}
+                onChange={handleClipChange}
+                onSubmit={handleClipSubmit}
+                onCancelEdit={cancelEdit}
+              />
+            </section>
 
-                <div className="card-actions">
-                  <button onClick={() => startEdit(clip)}>Edit</button>
-                  <button className="danger" onClick={() => deleteClip(clip.id)}>
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))}
+            <section className="panel">
+              <h2>Clip Library</h2>
 
-            {clips.length === 0 && (
-              <p className="empty">No clips saved yet. Add one to begin.</p>
-            )}
-          </div>
-        </section>
+              <ClipFilters
+                search={search}
+                statusFilter={statusFilter}
+                onSearchChange={setSearch}
+                onStatusChange={setStatusFilter}
+              />
+
+              <p className="count">{clips.length} clip(s) found</p>
+
+              <div className="clip-list">
+                {clips.map((clip) => (
+                  <ClipCard
+                    key={clip.id}
+                    clip={clip}
+                    onEdit={startEdit}
+                    onDelete={handleDeleteClip}
+                  />
+                ))}
+
+                {clips.length === 0 && (
+                  <p className="empty">No clips saved yet. Add one to begin.</p>
+                )}
+              </div>
+            </section>
+          </>
+        )}
       </main>
     </div>
   );
