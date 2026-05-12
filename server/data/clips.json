@@ -1,23 +1,13 @@
 [
   {
-    "id": 1777950815819,
-    "url": "https://www.youtube.com/watch?v=abc123&t=30s",
+    "id": 1778547026038,
+    "userId": 1778547026037,
+    "url": "https://www.youtube.com/watch?v=abc123",
     "normalizedUrl": "https://www.youtube.com/watch?v=abc123",
-    "title": "test clip",
-    "status": "watch_later",
-    "tags": "test, youtube",
-    "notes": "",
-    "createdAt": "2026-05-05T03:13:35.819Z"
-  },
-  {
-    "id": 1778545932703,
-    "userId": 1778545854438,
-    "url": "https://www.youtube.com/shorts/y7Pl0QQtJZI",
-    "normalizedUrl": "https://www.youtube.com/shorts/y7Pl0QQtJZI",
-    "title": "eyebrow for women",
+    "title": "Saved Clip",
     "status": "saved",
     "tags": "",
-    "notes": "test",
-    "createdAt": "2026-05-12T00:32:12.703Z"
+    "notes": "",
+    "createdAt": "2026-05-12T00:50:26.038Z"
   }
 ]
