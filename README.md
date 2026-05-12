@@ -26,6 +26,12 @@ https://www.youtube.com/watch?v=abc123
 
 ---
 
+## Live Demo
+
+Frontend: https://ornate-puppy-779bc1.netlify.app/
+
+Backend API: https://clipvault-api.onrender.com/api
+
 ## Features
 
 - User registration
