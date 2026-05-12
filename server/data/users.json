@@ -1,9 +1,9 @@
 [
   {
-    "id": 1778545854438,
-    "username": "zutazuta",
-    "email": "stenio1212@gmail.com",
-    "passwordHash": "$2b$10$c7bOYfEXimCYIgBrtFVB0O/X7NnNB6aIwAsIvEs1M4gQJzcQXgs/y",
-    "createdAt": "2026-05-12T00:30:54.438Z"
+    "id": 1778547026037,
+    "username": "testuser",
+    "email": "test@example.com",
+    "passwordHash": "$2b$10$LVJPi6gzJDidVX5jgk3x6O9LdfNfcWIif9xu.j4MJQBzogwmU3y1K",
+    "createdAt": "2026-05-12T00:50:26.037Z"
   }
 ]
