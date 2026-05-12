@@ -5,7 +5,7 @@ function getAllClips(req, res) {
   const clips = readClips();
   const { search, status } = req.query;
 
-  let results = clips;
+  let results = clips.filter((clip) => clip.userId === req.user.id);
 
   if (search) {
     const term = search.toLowerCase();
@@ -29,7 +29,10 @@ function getAllClips(req, res) {
 
 function getClipById(req, res) {
   const clips = readClips();
-  const clip = clips.find((clip) => clip.id === Number(req.params.id));
+
+  const clip = clips.find((clip) => {
+    return clip.id === Number(req.params.id) && clip.userId === req.user.id;
+  });
 
   if (!clip) {
     return res.status(404).json({ error: "Clip not found" });
@@ -47,7 +50,10 @@ function checkDuplicateClip(req, res) {
   }
 
   const clips = readClips();
-  const existingClip = clips.find((clip) => clip.normalizedUrl === normalizedUrl);
+
+  const existingClip = clips.find((clip) => {
+    return clip.normalizedUrl === normalizedUrl && clip.userId === req.user.id;
+  });
 
   if (existingClip) {
     return res.json({
@@ -69,7 +75,9 @@ function createClip(req, res) {
 
   const clips = readClips();
 
-  const duplicate = clips.find((clip) => clip.normalizedUrl === normalizedUrl);
+  const duplicate = clips.find((clip) => {
+    return clip.normalizedUrl === normalizedUrl && clip.userId === req.user.id;
+  });
 
   if (duplicate) {
     return res.status(409).json({
@@ -80,6 +88,7 @@ function createClip(req, res) {
 
   const newClip = {
     id: Date.now(),
+    userId: req.user.id,
     url,
     normalizedUrl,
     title: title || "Untitled Clip",
@@ -97,7 +106,10 @@ function createClip(req, res) {
 
 function updateClip(req, res) {
   const clips = readClips();
-  const clipIndex = clips.findIndex((clip) => clip.id === Number(req.params.id));
+
+  const clipIndex = clips.findIndex((clip) => {
+    return clip.id === Number(req.params.id) && clip.userId === req.user.id;
+  });
 
   if (clipIndex === -1) {
     return res.status(404).json({ error: "Clip not found" });
@@ -106,6 +118,8 @@ function updateClip(req, res) {
   clips[clipIndex] = {
     ...clips[clipIndex],
     ...req.body,
+    id: clips[clipIndex].id,
+    userId: clips[clipIndex].userId,
     updatedAt: new Date().toISOString()
   };
 
@@ -116,11 +130,18 @@ function updateClip(req, res) {
 
 function deleteClip(req, res) {
   const clips = readClips();
-  const filteredClips = clips.filter((clip) => clip.id !== Number(req.params.id));
 
-  if (filteredClips.length === clips.length) {
+  const clipExists = clips.some((clip) => {
+    return clip.id === Number(req.params.id) && clip.userId === req.user.id;
+  });
+
+  if (!clipExists) {
     return res.status(404).json({ error: "Clip not found" });
   }
+
+  const filteredClips = clips.filter((clip) => {
+    return !(clip.id === Number(req.params.id) && clip.userId === req.user.id);
+  });
 
   writeClips(filteredClips);
 

@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
+const authRoutes = require("./routes/authRoutes");
 const clipRoutes = require("./routes/clipRoutes");
+const requireAuth = require("./middleware/authMiddleware");
 
 const app = express();
 
@@ -11,6 +13,7 @@ app.get("/api", (req, res) => {
   res.json({ message: "ClipVault API is running" });
 });
 
-app.use("/api/clips", clipRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/clips", requireAuth, clipRoutes);
 
 module.exports = app;

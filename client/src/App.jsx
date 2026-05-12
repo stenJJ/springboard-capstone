@@ -6,15 +6,18 @@ import {
   createClip,
   deleteClip,
   getClips,
+  loginUser,
+  registerUser,
   updateClip
 } from "./api";
 
 import AlertMessage from "./components/AlertMessage";
+import AuthForm from "./components/AuthForm";
 import ClipCard from "./components/ClipCard";
 import ClipFilters from "./components/ClipFilters";
 import ClipForm from "./components/ClipForm";
 
-const emptyForm = {
+const emptyClipForm = {
   url: "",
   title: "",
   status: "saved",
@@ -22,9 +25,22 @@ const emptyForm = {
   notes: ""
 };
 
+const emptyAuthForm = {
+  username: "",
+  email: "",
+  usernameOrEmail: "",
+  password: ""
+};
+
 function App() {
   const [clips, setClips] = useState([]);
-  const [formData, setFormData] = useState(emptyForm);
+  const [clipFormData, setClipFormData] = useState(emptyClipForm);
+  const [authFormData, setAuthFormData] = useState(emptyAuthForm);
+  const [authMode, setAuthMode] = useState("login");
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem("user");
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [error, setError] = useState("");
@@ -32,6 +48,8 @@ function App() {
   const [editingId, setEditingId] = useState(null);
 
   async function loadClips() {
+    if (!user) return;
+
     try {
       const clipsFromApi = await getClips({
         search,
@@ -46,40 +64,87 @@ function App() {
 
   useEffect(() => {
     loadClips();
-  }, [search, statusFilter]);
+  }, [search, statusFilter, user]);
 
-  function handleChange(event) {
+  function handleClipChange(event) {
     const { name, value } = event.target;
 
-    setFormData((data) => ({
+    setClipFormData((data) => ({
       ...data,
       [name]: value
     }));
   }
 
-  async function handleSubmit(event) {
+  function handleAuthChange(event) {
+    const { name, value } = event.target;
+
+    setAuthFormData((data) => ({
+      ...data,
+      [name]: value
+    }));
+  }
+
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+
+    try {
+      const result =
+        authMode === "register"
+          ? await registerUser({
+              username: authFormData.username,
+              email: authFormData.email,
+              password: authFormData.password
+            })
+          : await loginUser({
+              usernameOrEmail: authFormData.usernameOrEmail,
+              password: authFormData.password
+            });
+
+      localStorage.setItem("token", result.token);
+      localStorage.setItem("user", JSON.stringify(result.user));
+
+      setUser(result.user);
+      setAuthFormData(emptyAuthForm);
+      setMessage(`Logged in as ${result.user.username}.`);
+    } catch (err) {
+      setError(err.response?.data?.error || "Authentication failed.");
+    }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setUser(null);
+    setClips([]);
+    setMessage("");
+    setError("");
+  }
+
+  async function handleClipSubmit(event) {
     event.preventDefault();
     setError("");
     setMessage("");
 
     try {
       if (editingId) {
-        await updateClip(editingId, formData);
+        await updateClip(editingId, clipFormData);
         setMessage("Clip updated.");
         setEditingId(null);
       } else {
-        const duplicateCheck = await checkDuplicateClip(formData.url);
+        const duplicateCheck = await checkDuplicateClip(clipFormData.url);
 
         if (duplicateCheck.duplicate) {
           setError("Duplicate warning: this URL is already saved.");
           return;
         }
 
-        await createClip(formData);
+        await createClip(clipFormData);
         setMessage("Clip saved.");
       }
 
-      setFormData(emptyForm);
+      setClipFormData(emptyClipForm);
       loadClips();
     } catch (err) {
       setError(err.response?.data?.error || "Something went wrong.");
@@ -89,7 +154,7 @@ function App() {
   function startEdit(clip) {
     setEditingId(clip.id);
 
-    setFormData({
+    setClipFormData({
       url: clip.url,
       title: clip.title,
       status: clip.status,
@@ -110,7 +175,13 @@ function App() {
 
   function cancelEdit() {
     setEditingId(null);
-    setFormData(emptyForm);
+    setClipFormData(emptyClipForm);
+  }
+
+  function toggleAuthMode() {
+    setAuthMode((mode) => (mode === "login" ? "register" : "login"));
+    setError("");
+    setMessage("");
   }
 
   return (
@@ -121,50 +192,77 @@ function App() {
           Save video links, organize clips, and prevent duplicate URLs from
           cluttering your media library.
         </p>
+
+        {user && (
+          <div className="user-bar">
+            <span>Logged in as {user.username}</span>
+            <button type="button" className="secondary" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
+        )}
       </header>
 
-      <main className="layout">
-        <section className="panel">
-          <h2>{editingId ? "Edit Clip" : "Add Clip"}</h2>
+      <main className={user ? "layout" : "auth-layout"}>
+        {!user && (
+          <>
+            <AlertMessage error={error} message={message} />
 
-          <AlertMessage error={error} message={message} />
+            <AuthForm
+              mode={authMode}
+              formData={authFormData}
+              onChange={handleAuthChange}
+              onSubmit={handleAuthSubmit}
+              onToggleMode={toggleAuthMode}
+            />
+          </>
+        )}
 
-          <ClipForm
-            formData={formData}
-            editingId={editingId}
-            onChange={handleChange}
-            onSubmit={handleSubmit}
-            onCancelEdit={cancelEdit}
-          />
-        </section>
+        {user && (
+          <>
+            <section className="panel">
+              <h2>{editingId ? "Edit Clip" : "Add Clip"}</h2>
 
-        <section className="panel">
-          <h2>Clip Library</h2>
+              <AlertMessage error={error} message={message} />
 
-          <ClipFilters
-            search={search}
-            statusFilter={statusFilter}
-            onSearchChange={setSearch}
-            onStatusChange={setStatusFilter}
-          />
-
-          <p className="count">{clips.length} clip(s) found</p>
-
-          <div className="clip-list">
-            {clips.map((clip) => (
-              <ClipCard
-                key={clip.id}
-                clip={clip}
-                onEdit={startEdit}
-                onDelete={handleDeleteClip}
+              <ClipForm
+                formData={clipFormData}
+                editingId={editingId}
+                onChange={handleClipChange}
+                onSubmit={handleClipSubmit}
+                onCancelEdit={cancelEdit}
               />
-            ))}
+            </section>
 
-            {clips.length === 0 && (
-              <p className="empty">No clips saved yet. Add one to begin.</p>
-            )}
-          </div>
-        </section>
+            <section className="panel">
+              <h2>Clip Library</h2>
+
+              <ClipFilters
+                search={search}
+                statusFilter={statusFilter}
+                onSearchChange={setSearch}
+                onStatusChange={setStatusFilter}
+              />
+
+              <p className="count">{clips.length} clip(s) found</p>
+
+              <div className="clip-list">
+                {clips.map((clip) => (
+                  <ClipCard
+                    key={clip.id}
+                    clip={clip}
+                    onEdit={startEdit}
+                    onDelete={handleDeleteClip}
+                  />
+                ))}
+
+                {clips.length === 0 && (
+                  <p className="empty">No clips saved yet. Add one to begin.</p>
+                )}
+              </div>
+            </section>
+          </>
+        )}
       </main>
     </div>
   );
